@@ -1,0 +1,105 @@
+name: Build and Deploy to ECS
+
+# Branch = environment. Pushing to dev/qa/prod triggers a build+deploy
+# into that environment's own AWS account.
+on:
+  push:
+    branches:
+      - dev
+      - qa
+      - prod
+
+# id-token: write is required so this workflow can assume an IAM role
+# via OIDC instead of storing long-lived AWS keys in GitHub.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    # Self-hosted runner = your company/local build machine, since the
+    # image must be built there rather than on GitHub-hosted runners.
+    runs-on: [self-hosted, linux, docker]
+
+    # THIS is how the environment is selected: the branch name (dev/qa/prod)
+    # is used directly as the GitHub Environment name. Each Environment
+    # (configured in Settings -> Environments) holds its own secrets and
+    # variables, scoped to that environment's own AWS account.
+    environment: ${{ github.ref_name }}
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # role-to-assume comes from THIS environment's secrets, so dev/qa/prod
+      # each authenticate into a different AWS account with no shared keys.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tag
+        id: vars
+        run: echo "IMAGE_TAG=${{ github.ref_name }}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image (built locally on this runner)
+        run: |
+          docker build -t "$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}" -f Dockerfile .
+
+      - name: Tag image for ECR
+        run: |
+          docker tag "$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}" \
+            "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}"
+
+      - name: Push image to ECR
+        run: |
+          docker push "${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}"
+
+      # Optional secondary push — e.g. Docker Hub or an internal company
+      # registry — kept as a backup/mirror of what ECS actually deploys.
+      - name: Login to Docker Hub
+        if: ${{ vars.PUSH_TO_DOCKERHUB == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image to Docker Hub
+        if: ${{ vars.PUSH_TO_DOCKERHUB == 'true' }}
+        run: |
+          docker tag "$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}" \
+            "${{ vars.DOCKERHUB_NAMESPACE }}/$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}"
+          docker push "${{ vars.DOCKERHUB_NAMESPACE }}/$ECR_REPOSITORY:${{ steps.vars.outputs.IMAGE_TAG }}"
+
+      # Each environment has its own task-def-<env>.json checked into the
+      # repo. It already contains "secrets" entries pointing at THAT
+      # environment's Secrets Manager / Parameter Store ARNs — ECS resolves
+      # them at container startup, so no secret value ever passes through
+      # this pipeline or its logs.
+      - name: Render new ECS task definition with the built image
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs/task-def-${{ github.ref_name }}.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.IMAGE_TAG }}
+
+      - name: Deploy task definition to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

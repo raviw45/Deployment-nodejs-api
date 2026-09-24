@@ -1,0 +1,53 @@
+{
+  "family": "myapp-dev",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<DEV_ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<DEV_ACCOUNT_ID>:role/myapp-dev-task-role",
+  "containerDefinitions": [
+    {
+      "name": "myapp",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "dev" },
+        { "name": "PORT", "value": "3000" }
+      ],
+      "secrets": [
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<DEV_ACCOUNT_ID>:secret:myapp/dev/JWT_SECRET"
+        },
+        {
+          "name": "MONGO_URI",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<DEV_ACCOUNT_ID>:secret:myapp/dev/MONGO_URI"
+        },
+        {
+          "name": "COOKIE_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<DEV_ACCOUNT_ID>:secret:myapp/dev/COOKIE_SECRET"
+        },
+        {
+          "name": "PAYMENT_GATEWAY_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<DEV_ACCOUNT_ID>:parameter/myapp/dev/PAYMENT_GATEWAY_URL"
+        },
+        {
+          "name": "NOTIFICATION_SERVICE_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<DEV_ACCOUNT_ID>:parameter/myapp/dev/NOTIFICATION_SERVICE_URL"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/myapp-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

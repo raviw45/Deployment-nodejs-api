@@ -1,0 +1,53 @@
+{
+  "family": "myapp-qa",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<QA_ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<QA_ACCOUNT_ID>:role/myapp-qa-task-role",
+  "containerDefinitions": [
+    {
+      "name": "myapp",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "qa" },
+        { "name": "PORT", "value": "3000" }
+      ],
+      "secrets": [
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<QA_ACCOUNT_ID>:secret:myapp/qa/JWT_SECRET"
+        },
+        {
+          "name": "MONGO_URI",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<QA_ACCOUNT_ID>:secret:myapp/qa/MONGO_URI"
+        },
+        {
+          "name": "COOKIE_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<QA_ACCOUNT_ID>:secret:myapp/qa/COOKIE_SECRET"
+        },
+        {
+          "name": "PAYMENT_GATEWAY_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<QA_ACCOUNT_ID>:parameter/myapp/qa/PAYMENT_GATEWAY_URL"
+        },
+        {
+          "name": "NOTIFICATION_SERVICE_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<QA_ACCOUNT_ID>:parameter/myapp/qa/NOTIFICATION_SERVICE_URL"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/myapp-qa",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

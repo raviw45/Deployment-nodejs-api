@@ -1,0 +1,53 @@
+{
+  "family": "myapp-prod",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<PROD_ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<PROD_ACCOUNT_ID>:role/myapp-prod-task-role",
+  "containerDefinitions": [
+    {
+      "name": "myapp",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "prod" },
+        { "name": "PORT", "value": "3000" }
+      ],
+      "secrets": [
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<PROD_ACCOUNT_ID>:secret:myapp/prod/JWT_SECRET"
+        },
+        {
+          "name": "MONGO_URI",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<PROD_ACCOUNT_ID>:secret:myapp/prod/MONGO_URI"
+        },
+        {
+          "name": "COOKIE_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:<PROD_ACCOUNT_ID>:secret:myapp/prod/COOKIE_SECRET"
+        },
+        {
+          "name": "PAYMENT_GATEWAY_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<PROD_ACCOUNT_ID>:parameter/myapp/prod/PAYMENT_GATEWAY_URL"
+        },
+        {
+          "name": "NOTIFICATION_SERVICE_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:<PROD_ACCOUNT_ID>:parameter/myapp/prod/NOTIFICATION_SERVICE_URL"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/myapp-prod",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
